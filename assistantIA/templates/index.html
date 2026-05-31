@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hope Assistant · structuré</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="/static/style.css"> 
+    <!-- Marked.js pour le rendu Markdown -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="icon" href="hopelogo.png">
+   
+</head>
+<body>
+<div class="sidebar">
+    <button class="new-chat" id="newBtn"><i class="fas fa-plus"></i> Nouveau chat</button>
+    <div class="conv-list" id="convList"></div>
+</div>
+<div class="main">
+    <div class="header">
+        <h2 id="title">Conversation</h2>
+        <button class="clear-btn" id="clearBtn"><i class="fas fa-trash-alt"></i> Effacer</button>
+    </div>
+    <div class="chat-area" id="chatArea"></div>
+    <div id="avertissement"></div>
+    <div class="input-wrapper">
+        <div class="input-container">
+            <textarea id="msgInput" rows="1" placeholder="Écrivez votre question... (Entrée)"></textarea>
+            <button class="send" id="sendBtn"><i class="fas fa-paper-plane"></i></button>
+        </div>
+        <div class="footer">Hope Assistant, verifiez les réponses car il peut se tromper</div>
+    </div>
+</div>
+
+<script>
+
+    function verifierLongueur() {
+        var longueur = document.getElementById("msgInput").value.length;
+        if (longueur >= 180) {
+            document.getElementById("avertissement").innerHTML = "Vous avez atteint 80% de la limite de caractères.";
+        } else if (longueur >= 190) {
+            document.getElementById("avertissement").innerHTML = "Vous avez atteint 90% de la limite de caractères.";
+        } else if (longueur >= 195) {
+            document.getElementById("avertissement").innerHTML = "Vous avez atteint 95% de la limite de caractères.";
+        } else if (longueur >= 198) {
+            document.getElementById("avertissement").innerHTML = "Vous avez atteint 98% de la limite de caractères.";
+        } else if (longueur >= 199) {
+            document.getElementById("avertissement").innerHTML = "Vous avez atteint 99% de la limite de caractères.";
+        } else {
+            document.getElementById("avertissement").innerHTML = "";
+        }
+    }
+    
+    // ---------- données ----------
+    let conversations = [];
+    let currentId = null;
+
+    // Configuration de marked framwork pour le rendu Markdown
+    marked.setOptions({
+        breaks: true,
+        gfm: true
+    });
+
+    function escapeHtml(str) {
+        return str.replace(/[&<>]/g, function(m) {
+            if (m === '&') return '&amp;';
+            if (m === '<') return '&lt;';
+            if (m === '>') return '&gt;';
+            return m;
+        });
+    }
+
+    // Convertir le markdown en HTML et gérer les erreurs de parsing
+    function renderMarkdown(text) {
+        try {
+            return marked.parse(text, { async: false });
+        } catch(e) {
+            return escapeHtml(text).replace(/\n/g, '<br>');
+        }
+    }
+
+    function save() { localStorage.setItem('hope_simple', JSON.stringify(conversations)); }
+    function load() {
+        const raw = localStorage.getItem('hope_simple');
+        if (raw) conversations = JSON.parse(raw);
+        if (!conversations.length) {
+            conversations = [{ id: Date.now(), title: "Nouveau chat", messages: [{ role: "bot", text: "Bonjour ! Je suis Hope Assistant. Posez vos questions." }] }];
+            save();
+        }
+        currentId = conversations[0].id;
+        renderSidebar();
+        renderChat();
+    }
+
+    function renderSidebar() {
+        const container = document.getElementById('convList');
+        container.innerHTML = '';
+        conversations.forEach(c => {
+            const div = document.createElement('div');
+            div.className = `conv ${c.id === currentId ? 'active' : ''}`;
+            div.innerHTML = `<span>${escapeHtml(c.title)}</span><i class="fas fa-trash-alt del-conv"></i>`;
+            div.addEventListener('click', (e) => { if (!e.target.classList.contains('del-conv')) { currentId = c.id; renderSidebar(); renderChat(); } });
+            div.querySelector('.del-conv').addEventListener('click', (e) => { e.stopPropagation(); deleteConv(c.id); });
+            container.appendChild(div);
+        });
+    }
+
+    function deleteConv(id) {
+        if (conversations.length === 1) return alert("Au moins une conversation requise");
+        conversations = conversations.filter(c => c.id !== id);
+        if (currentId === id) currentId = conversations[0].id;
+        save();
+        renderSidebar();
+        renderChat();
+    }
+
+    function newConversation() {
+        const newId = Date.now();
+        conversations.unshift({ id: newId, title: "Nouveau chat", messages: [] });
+        currentId = newId;
+        save();
+        renderSidebar();
+        renderChat();
+    }
+
+    function updateTitle(conv) {
+        const firstUser = conv.messages.find(m => m.role === 'user');
+        conv.title = firstUser ? (firstUser.text.slice(0, 25) + (firstUser.text.length > 25 ? '…' : '')) : "Nouveau chat";
+        save();
+        renderSidebar();
+        document.getElementById('title').innerText = conv.title;
+    }
+
+    function renderChat() {
+        const area = document.getElementById('chatArea');
+        const conv = conversations.find(c => c.id === currentId);
+        if (!conv) return;
+        area.innerHTML = '';
+        if (conv.messages.length === 0) {
+            area.innerHTML = '<div class="empty"><i class="fas fa-comment-dots"></i><p>Comment puis-je vous aider ?</p></div>';
+            return;
+        }
+        conv.messages.forEach((msg, idx) => {
+            const div = document.createElement('div');
+            div.className = `message ${msg.role}`;
+            const avatar = `<div class="avatar"><i class="fas ${msg.role === 'user' ? 'fa-user' : 'fa-robot'}"></i></div>`;
+            let bubbleContent = '';
+            if (msg.role === 'user') {
+                bubbleContent = `<div class="bubble" id="bubble-${idx}">${escapeHtml(msg.text).replace(/\n/g, '<br>')}<i class="fas fa-pen" style="font-size:0.7rem; margin-left:8px; cursor:pointer;" onclick="editMessage(${idx})"></i></div>`;
+            } else {
+                // Pour le bot : conversion Markdown -> HTML
+                const htmlContent = renderMarkdown(msg.text);
+                bubbleContent = `<div class="bubble" id="bubble-${idx}">${htmlContent}</div>`;
+            }
+            div.innerHTML = avatar + bubbleContent;
+            area.appendChild(div);
+        });
+        area.scrollTop = area.scrollHeight;
+        document.getElementById('title').innerText = conv.title;
+    }
+
+    // Édition en ligne (inchangée) 
+    window.editMessage = function(msgIndex) {
+        const conv = conversations.find(c => c.id === currentId);
+        if (!conv) return;
+        const oldText = conv.messages[msgIndex].text;
+        const bubbleDiv = document.getElementById(`bubble-${msgIndex}`);
+        if (!bubbleDiv) return;
+        bubbleDiv.innerHTML = '';
+        const textarea = document.createElement('textarea');
+        textarea.value = oldText;
+        textarea.className = 'edit-input';
+        textarea.rows = 2;
+        const saveBtn = document.createElement('button');
+        saveBtn.textContent = '✓';
+        saveBtn.style.marginLeft = '8px';
+        saveBtn.style.padding = '4px 8px';
+        saveBtn.style.borderRadius = '20px';
+        saveBtn.style.border = 'none';
+        saveBtn.style.background = '#2563eb';
+        saveBtn.style.color = 'white';
+        saveBtn.style.cursor = 'pointer';
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '✗';
+        cancelBtn.style.marginLeft = '6px';
+        cancelBtn.style.padding = '4px 8px';
+        cancelBtn.style.borderRadius = '20px';
+        cancelBtn.style.border = 'none';
+        cancelBtn.style.background = '#94a3b8';
+        cancelBtn.style.cursor = 'pointer';
+        bubbleDiv.appendChild(textarea);
+        bubbleDiv.appendChild(saveBtn);
+        bubbleDiv.appendChild(cancelBtn);
+        textarea.focus();
+
+        const saveEdit = () => {
+            const newText = textarea.value.trim();
+            if (newText !== '') {
+                conv.messages[msgIndex].text = newText;
+                save();
+                updateTitle(conv);
+                renderChat();
+            } else {
+                renderChat();
+            }
+        };
+        saveBtn.onclick = saveEdit;
+        cancelBtn.onclick = () => renderChat();
+        textarea.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                saveEdit();
+            }
+        });
+    };
+
+    async function sendMessage() {
+        const input = document.getElementById('msgInput');
+        let q = input.value.trim();
+        if (!q) return;
+        const conv = conversations.find(c => c.id === currentId);
+        conv.messages.push({ role: 'user', text: q });
+        updateTitle(conv);
+        renderChat();
+        input.value = '';
+
+        const area = document.getElementById('chatArea');
+        const typingDiv = document.createElement('div');
+        typingDiv.className = 'message bot';
+        typingDiv.innerHTML = `<div class="avatar"><i class="fas fa-robot"></i></div><div class="typing"><span></span><span></span><span></span></div>`;
+        area.appendChild(typingDiv);
+        area.scrollTop = area.scrollHeight;
+
+        try {
+            const res = await fetch('/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ question: q })
+            });
+            const data = await res.json();
+            typingDiv.remove();
+            conv.messages.push({ role: 'bot', text: data.reponse });
+            save();
+            renderChat();
+        } catch(e) {
+            typingDiv.remove();
+            conv.messages.push({ role: 'bot', text: "Erreur de connexion au serveur." });
+            save();
+            renderChat();
+        }
+    }
+
+    // événements
+    document.getElementById('sendBtn').onclick = sendMessage;
+    document.getElementById('msgInput').addEventListener('keypress', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    document.getElementById('clearBtn').onclick = () => {
+        if (confirm('Effacer tous les messages de cette conversation ?')) {
+            const conv = conversations.find(c => c.id === currentId);
+            conv.messages = [];
+            updateTitle(conv);
+            save();
+            renderChat();
+        }
+    };
+    document.getElementById('newBtn').onclick = newConversation;
+
+    load();
+</script>
+</body>
+</html>
