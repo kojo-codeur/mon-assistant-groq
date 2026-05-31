@@ -20,5 +20,5 @@ Hope Assistant est un assistant intelligent, rapide et gratuit (dans la limite d
 
 1. **Cloner le dépôt**
    ```bash
-   git clone https://github.com/ton-compte/hope-assistant.git
+   https://github.com/kojo-codeur/mon-assistant-groq.git
    cd hope-assistant
